@@ -1,0 +1,12 @@
+# teruxutil パッケージで使用する設定ファイル。
+# このファイルの場所は環境変数 TXU_CONFIG_FILE で指定する。
+
+config:
+  #### teruxutil.openai モジュール の設定 #####
+  api_key:
+  azure_endpoint: # 本家 OpenAIでは不要
+  model_name: gpt-4
+  temperature: 0.6
+  max_tokens: 2000
+  api_version: 2023-12-01-preview
+  max_retries: 10

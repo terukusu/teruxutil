@@ -2,6 +2,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=macos,windows,python,pycharm,git,venv
 
 .idea
+config.yaml
 
 ### Git ###
 # Created by git for backups. To disable backups in Git:
