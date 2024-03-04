@@ -1,6 +1,14 @@
-from teruxutil import openai
+import logging
 
 from pydantic import BaseModel, Field
+
+from teruxutil import openai
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    encoding='utf-8',
+    format='%(asctime)s %(name)s %(levelname)s %(message)s',
+)
 
 
 class Response(BaseModel):
@@ -34,8 +42,8 @@ def main():
     client_class = openai.OpenAI
 
     # 一番シンプル
-    client = client_class()
-    result = client.chat_completion('こんにちは')
+    # client = client_class()
+    # result = client.chat_completion('こんにちは')
 
     # カスタムレスポンスクラスを使う
     # client = client_class()
@@ -46,8 +54,8 @@ def main():
     # result = client.chat_completion('この画像を分析して', images=[('image/png', image)])
 
     # カスタム関数を使う
-    # client = client_class()
-    # result = client.chat_completion('東京の天気は？', functions=[func_def])
+    client = client_class()
+    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 

@@ -1,4 +1,5 @@
 import base64
+import json
 
 from abc import ABC, abstractmethod
 from typing import Callable, Type, Any, List
@@ -9,6 +10,52 @@ from pydantic import BaseModel
 from teruxutil.config import Config
 
 _config = Config()
+_DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE = 10
+
+
+class Message:
+    def __init__(self, role: str, content: Any):
+        self.role = role
+        self.content = content
+
+    def dict(self):
+        return {
+            'role': self.role,
+            'content': self.content
+        }
+
+
+class MessageHistory:
+    def __init__(self, history=None, max_tokens=None):
+            self.history = history or []
+            self.max_tokens = max_tokens or _config['chat_history_max_tokens']
+
+    def add_ai_message(self, message):
+        self.add_message('AI', message)
+
+    def add_user_message(self, message):
+        self.add_message('User', message)
+
+    def add_system_message(self, message):
+        self.add_message('System', message)
+
+    def add_message(self, speaker_type, message):
+        self.history.append({
+            'type': speaker_type,
+            'message': message
+        })
+
+        # max_tokenを超えない程度に履歴を減らす
+        if len(self.message_history()) > self.max_tokens:
+            while len(self.message_history()) > self.max_tokens:
+                del self.history[0]
+
+    def message_history(self):
+        return '\n'.join([f'{x["type"]}:\n{x["message"]}' for x in self.history])
+
+    def __repr__(self):
+        props = ', '.join([f"{k}={v!r}" for k, v in self.__dict__.items()])
+        return f"{self.__class__.__name__}({props})"
 
 
 class FunctionDefinition(BaseModel):
@@ -55,10 +102,18 @@ class ChatCompletionPayloadBuilder:
     そして最終的なペイロードの構築を行うメソッドを提供します。
     """
 
-    def __init__(self):
+    def __init__(self, model_name: str, max_tokens: int = None, temperature: float = None):
         """
         ChatCompletionPayloadBuilderクラスのインスタンスを初期化します。
+
+        :param model_name: 使用するモデルの名前。この値は必須です。
+        :param max_tokens: リクエストの応答に含める最大トークン数。この値はオプションです。
+        :param temperature: 応答の多様性を制御する温度パラメータ。この値はオプションです。
         """
+
+        self.model_name = model_name
+        self.max_tokens = max_tokens
+        self.temperature = temperature
         self.payload: dict[str, Any] = {'messages': []}
 
     def add_user_message(self, prompt):
@@ -78,6 +133,24 @@ class ChatCompletionPayloadBuilder:
         })
 
         return self
+
+    def add_ai_message(self, message):
+        if not message:
+            return self
+
+        # {'tool_calls': None} を含んでいるとエラーに成るので除去
+        copied_message = {k: v for k, v in message.items() if k != 'tool_calls'}
+
+        self.payload['messages'].append(copied_message)
+
+        return self
+
+    def add_function_response(self, name: str, response: dict[str, Any]):
+        self.payload['messages'].append({
+            'role': 'function',
+            'name': name,
+            'content': json.dumps(response, ensure_ascii=False)
+        })
 
     def add_images(self, images):
         """
@@ -114,13 +187,13 @@ class ChatCompletionPayloadBuilder:
             self.payload['functions'] = []
 
         self.payload['functions'].append({
-            'name': 'format_ai_response',
+            'name': 'format_ai_message',
             'description': '最終的なAIの応答をフォーマットするための関数です。最後に必ず実行してください。',
             'parameters': response_class.model_json_schema()
         })
 
         if not self.payload.get('function_call'):
-            self.payload['function_call'] = {'name': 'format_ai_response'}
+            self.payload['function_call'] = {'name': 'format_ai_message'}
 
         return self
 
@@ -143,25 +216,21 @@ class ChatCompletionPayloadBuilder:
 
         return self
 
-    def build(self, model: str, max_tokens: int = None, temperature: float = None):
+    def build(self):
         """
         最終的なペイロードを構築します。
 
-        :param model: 使用するモデルの名前。
-        :param max_tokens: 応答に含める最大トークン数。
-        :param temperature: 応答の多様性を制御するための温度パラメータ。
         :return: 構築されたペイロード。
         """
 
-        params = {'model': model}
+        if self.model_name:
+            self.payload['model'] = self.model_name
 
-        if max_tokens:
-            params['max_tokens'] = max_tokens
+        if self.max_tokens:
+            self.payload['max_tokens'] = self.max_tokens
 
-        if temperature is not None:
-            params['temperature'] = temperature
-
-        self.payload.update(params)
+        if self.temperature is not None:
+            self.payload['temperature'] = self.temperature
 
         return self.payload
 
@@ -206,21 +275,53 @@ class BaseOpenAI(ABC):
         :return: OpenAI APIからの応答。
         """
 
-        builder = (ChatCompletionPayloadBuilder()
-                   .add_user_message(prompt)
-                   .add_images(images)
-                   .add_response_class(response_class)
-                   .add_functions(functions))
-
-        payload = builder.build(
+        builder = (ChatCompletionPayloadBuilder(
             kwargs.get('model_name') or self.model_name,
             kwargs.get('max_tokens') or self.max_tokens,
-            kwargs.get('temperature') or self.temperature
-        )
+            kwargs.get('temperature') or self.temperature)
+           .add_user_message(prompt)
+           .add_images(images)
+           .add_response_class(response_class)
+           .add_functions(functions))
+
+        payload = builder.build()
 
         client = self.get_openai_client(kwargs.get('max_retries'))
 
-        result = client.chat.completions.create(**payload)
+        max_retry_for_format_ai_message = _DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE
+        retry_for_format_ai_message = 0
+
+        while True:
+            result = client.chat.completions.create(**payload)
+
+            if not result.choices[0].message.function_call:
+                if response_class:
+                    if retry_for_format_ai_message < max_retry_for_format_ai_message:
+                        print(f"format_ai_message function が実行されていません。リトライします..: retryCount={retry_for_format_ai_message}")
+                        retry_for_format_ai_message += 1
+                        continue
+
+                    raise Exception("format_ai_message function のリトライ最大回数に到達しましたが、実行されませんでした。")
+                else:
+                    return result
+
+            print(f'aaaaa: {result.choices[0].message.function_call.name}')
+
+            if result.choices[0].message.function_call.name == 'format_ai_message':
+                return result
+
+            function_call = result.choices[0].message.function_call
+            target_function = next(x.function for x in functions if x.function.__name__ == function_call.name)
+            func_args = json.loads(function_call.arguments)
+
+            # function の実行
+            func_result = target_function(**func_args)
+
+            builder.add_ai_message(result.choices[0].message.dict())
+            builder.add_function_response(target_function.__name__, func_result)
+
+            # payload の更新
+            payload = builder.build()
 
         return result
 

@@ -1,10 +1,10 @@
 import base64
 
-from typing import Type
+from typing import Type, Any
 
 import unittest
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 from pydantic import BaseModel
 
 from teruxutil.openai import FunctionDefinition, ChatCompletionPayloadBuilder, BaseOpenAI, AzureOpenAI, OpenAI
@@ -15,8 +15,8 @@ class TestModel(BaseModel):
 
 
 # テスト用の関数を定義
-def test_function(model_instance: Type[BaseModel]) -> str:
-    return "processed"
+def test_function(*, field) -> dict[str, Any]:
+    return {'field': field}
 
 
 class FunctionDefinitionTests(unittest.TestCase):
@@ -53,14 +53,14 @@ class FunctionDefinitionTests(unittest.TestCase):
 class ChatCompletionPayloadBuilderTests(unittest.TestCase):
     def test_add_user_message(self):
         """add_user_messageメソッドが正しくユーザーメッセージを追加することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
         builder.add_user_message("Hello, world!")
         self.assertEqual(len(builder.payload['messages']), 1)
         self.assertEqual(builder.payload['messages'][0]['content'][0]['text'], "Hello, world!")
 
     def test_add_images(self):
         """add_imagesメソッドが正しく画像ペイロードを追加することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
         builder.add_user_message("Hello, world!")  # ユーザーメッセージを先に追加
         image_data = b"dummy_image_data"
         expected_image_url = f'data:image/png;base64,{base64.b64encode(image_data).decode("ascii")}'
@@ -71,19 +71,19 @@ class ChatCompletionPayloadBuilderTests(unittest.TestCase):
 
     def test_add_response_class(self):
         """add_response_classメソッドが正しくレスポンスクラスを追加することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
         response_class = TestModel
         expected_parameters = {'properties': {'field': {'title': 'Field', 'type': 'string'}}, 'required': ['field'], 'title': 'TestModel', 'type': 'object'}
 
         builder.add_response_class(response_class)
-        self.assertEqual(builder.payload['functions'][0]['name'], 'format_ai_response')
+        self.assertEqual(builder.payload['functions'][0]['name'], 'format_ai_message')
         self.assertEqual(builder.payload['functions'][0]['description'], '最終的なAIの応答をフォーマットするための関数です。最後に必ず実行してください。')
         self.assertDictEqual(builder.payload['functions'][0]['parameters'], expected_parameters)
-        self.assertDictEqual(builder.payload['function_call'],  {'name': 'format_ai_response'})
+        self.assertDictEqual(builder.payload['function_call'],  {'name': 'format_ai_message'})
 
     def test_add_response_class_case_after_add_functions(self):
         """add_functionsで関数が事前に追加されていた場合ですも、add_response_classメソッドが正しくレスポンスクラスを追加することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
 
         #  先に関数を追加
         func_def = FunctionDefinition(model=TestModel, description='Test function', function=test_function)
@@ -93,14 +93,14 @@ class ChatCompletionPayloadBuilderTests(unittest.TestCase):
         expected_parameters = {'properties': {'field': {'title': 'Field', 'type': 'string'}}, 'required': ['field'], 'title': 'TestModel', 'type': 'object'}
 
         builder.add_response_class(response_class)
-        self.assertEqual(builder.payload['functions'][1]['name'], 'format_ai_response')
+        self.assertEqual(builder.payload['functions'][1]['name'], 'format_ai_message')
         self.assertEqual(builder.payload['functions'][1]['description'], '最終的なAIの応答をフォーマットするための関数です。最後に必ず実行してください。')
         self.assertDictEqual(builder.payload['functions'][1]['parameters'], expected_parameters)
         self.assertEqual(builder.payload['function_call'],  'auto')
 
     def test_add_functions(self):
         """add_functionsメソッドが関数定義を正しく追加することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
         func_def = FunctionDefinition(model=TestModel, description='Test function', function=test_function)
 
         expected_parameters = {
@@ -117,24 +117,24 @@ class ChatCompletionPayloadBuilderTests(unittest.TestCase):
 
     def test_build(self):
         """buildメソッドが正しいペイロードを構築することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
-        payload = builder.build(model='gpt-4', max_tokens=1000, temperature=0.6)
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0.6)
+        payload = builder.build()
         self.assertEqual(payload['model'], 'gpt-4')
         self.assertEqual(payload['max_tokens'], 1000)
         self.assertEqual(payload['temperature'], 0.6)
 
     def test_build_case_zero_temperature(self):
         """buildメソッドが、temperature=0のときに、正しいペイロードを構築することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
-        payload = builder.build(model='gpt-4', max_tokens=1000, temperature=0)
+        builder = ChatCompletionPayloadBuilder('gpt-4', 1000, 0)
+        payload = builder.build()
         self.assertEqual(payload['model'], 'gpt-4')
         self.assertEqual(payload['max_tokens'], 1000)
         self.assertEqual(payload['temperature'], 0)
 
     def test_build_case_with_only_model(self):
         """buildメソッドが、modelしか指定されていない場合に、正しいペイロードを構築することを確認する"""
-        builder = ChatCompletionPayloadBuilder()
-        payload = builder.build(model='gpt-4')
+        builder = ChatCompletionPayloadBuilder('gpt-4')
+        payload = builder.build()
         self.assertEqual(payload['model'], 'gpt-4')
         self.assertFalse('max_tokens' in payload)
         self.assertFalse('temperature' in payload)
@@ -240,7 +240,9 @@ class TestAzureOpenAI(unittest.TestCase):
 
         mock_client = MagicMock()
         mock_get_openai_client.return_value = mock_client
-        mock_response = {'choices': [{'message': {'content': 'test response'}}]}
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = 'test response'
+        mock_response.choices[0].message.function_call = None
         mock_client.chat.completions.create.return_value = mock_response
         mock_build.return_value = {
             'messages': [{
@@ -258,7 +260,7 @@ class TestAzureOpenAI(unittest.TestCase):
 
         # モックが期待通りに呼び出されたか検証
         mock_add_user_message.assert_called_once_with('test prompt')
-        mock_build.assert_called_once_with('test_model', 100, 0.5)
+        mock_build.assert_called_once_with()
         mock_get_openai_client.assert_called_once_with(None)
         mock_client.chat.completions.create.assert_called_once_with(**mock_build.return_value)
 
@@ -289,7 +291,9 @@ class TestAzureOpenAI(unittest.TestCase):
 
         mock_client = MagicMock()
         mock_get_openai_client.return_value = mock_client
-        mock_response = {'choices': [{'message': {'content': 'test response'}}]}
+        mock_response = MagicMock()
+        mock_response.choices[0].message.function_call.arguments = '{"field": "test_field"}'
+        mock_response.choices[0].message.function_call.name = 'format_ai_message'
         mock_client.chat.completions.create.return_value = mock_response
         mock_build.return_value = {
             'messages': [{
@@ -297,7 +301,7 @@ class TestAzureOpenAI(unittest.TestCase):
                 'content': [{'type': 'text', 'text': 'test_prompt'}]
             }],
             'functions': [{
-                'name': 'format_ai_response',
+                'name': 'format_ai_message',
                 'description': '最終的なAIの応答をフォーマットするための関数です。最後に必ず実行してください。',
                 'parameters': {
                     'properties': {'field': {'title': 'Field', 'type': 'string'}},
@@ -318,7 +322,7 @@ class TestAzureOpenAI(unittest.TestCase):
         # モックが期待通りに呼び出されたか検証
         mock_add_user_message.assert_called_once_with('test prompt')
         mock_add_response_class.assert_called_once_with(TestModel)
-        mock_build.assert_called_once_with('test_model', 100, 0.5)
+        mock_build.assert_called_once_with()
         mock_get_openai_client.assert_called_once_with(None)
         mock_client.chat.completions.create.assert_called_once_with(**mock_build.return_value)
 
@@ -349,7 +353,9 @@ class TestAzureOpenAI(unittest.TestCase):
 
         mock_client = MagicMock()
         mock_get_openai_client.return_value = mock_client
-        mock_response = {'choices': [{'message': {'content': 'test response'}}]}
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = 'test response'
+        mock_response.choices[0].message.function_call = None
         mock_client.chat.completions.create.return_value = mock_response
         mock_build.return_value = {
             'messages': [{
@@ -379,7 +385,7 @@ class TestAzureOpenAI(unittest.TestCase):
         # モックが期待通りに呼び出されたか検証
         mock_add_user_message.assert_called_once_with('test prompt')
         mock_add_images.assert_called_once_with([('image/jpeg', b'test_image_data')])
-        mock_build.assert_called_once_with('test_model', 100, 0.5)
+        mock_build.assert_called_once_with()
         mock_get_openai_client.assert_called_once_with(None)
         mock_client.chat.completions.create.assert_called_once_with(**mock_build.return_value)
 
@@ -411,8 +417,29 @@ class TestAzureOpenAI(unittest.TestCase):
 
         mock_client = MagicMock()
         mock_get_openai_client.return_value = mock_client
-        mock_response = {'choices': [{'message': {'content': 'test response'}}]}
-        mock_client.chat.completions.create.return_value = mock_response
+
+        call_count = 0
+        mock_response = None
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count, mock_response
+            call_count += 1
+            print(f'call_count: {call_count}')
+            mock_response = MagicMock()
+
+            if call_count > 1:
+                mock_response.choices[0].message.function_call = None
+                mock_response.choices[0].message.content = 'Test response'
+            else:
+                mock_function_call = MagicMock()
+                mock_function_call.arguments = '{"field": "test_field"}'
+                mock_function_call.name = 'test_function'
+                mock_response.choices[0].message.function_call = mock_function_call
+
+            return mock_response
+
+        mock_client.chat.completions.create.side_effect = side_effect
+
         mock_build.return_value = {
             'messages': [{
                 'role': 'user',
@@ -440,7 +467,6 @@ class TestAzureOpenAI(unittest.TestCase):
         }
 
         func_def = FunctionDefinition(model=TestModel, description="Test function", function=test_function)
-        func_payload = func_def.to_function_payload()
 
         # テスト対象メソッドの呼び出し
         azure_ai = AzureOpenAI()
@@ -449,9 +475,9 @@ class TestAzureOpenAI(unittest.TestCase):
         # モックが期待通りに呼び出されたか検証
         mock_add_user_message.assert_called_once_with('test prompt')
         mock_add_functions.assert_called_once_with([func_def])
-        mock_build.assert_called_once_with('test_model', 100, 0.5)
+        mock_build.assert_has_calls([call(), call()])
         mock_get_openai_client.assert_called_once_with(None)
-        mock_client.chat.completions.create.assert_called_once_with(**mock_build.return_value)
+        mock_client.chat.completions.create.assert_has_calls([call(**mock_build.return_value), call(**mock_build.return_value)])
 
         # レスポンスが期待通りか検証
         self.assertEqual(response, mock_response)
