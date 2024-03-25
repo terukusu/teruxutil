@@ -7,6 +7,7 @@ from typing import Callable, Type, Any, List
 
 from openai import AzureOpenAI as OriginalAzureOpenAI, OpenAI as OriginalOpenAI
 from openai.types.chat import ChatCompletionMessage
+from openai.types.audio import Transcription
 from pydantic import BaseModel
 
 from teruxutil.config import Config
@@ -246,6 +247,7 @@ class BaseOpenAI(ABC):
                         **kwargs):
         """
         チャット完了機能を利用して、ユーザーからのプロンプトに基づいた応答を生成します。
+        画像を指定してた場合には、デフォルトのモデルは設定の「vision_model_name」キーの値になります。
 
         :param prompt: ユーザーからのプロンプトテキスト。
         :param images: プロンプトに添付する画像のリスト。(MIMEタイプ, 画像バイナリ)のタプル。
@@ -255,8 +257,12 @@ class BaseOpenAI(ABC):
         :return: OpenAI APIからの応答。
         """
 
+        model_name = kwargs.get('model_name') or self.model_name
+        if images:
+            model_name = kwargs.get('model_name') or _config['vision_model_name']
+
         builder = ChatCompletionPayloadBuilder(
-            kwargs.get('model_name') or self.model_name,
+            model_name,
             kwargs.get('max_tokens') or self.max_tokens,
             kwargs.get('temperature') or self.temperature
         )
@@ -328,8 +334,18 @@ class BaseOpenAI(ABC):
 
         return return_value
 
+    def audio_transcription(self, input_file_path, *args, **kwargs) -> Transcription:
+        client = self.get_openai_client(kwargs.get('max_retries'))
+        with open(input_file_path, 'rb') as audio_bytes:
+            transcription = client.audio.transcriptions.create(
+                model=kwargs.get('model_name') or _config['audio_transcript_model_name'],
+                file=audio_bytes
+            )
+
+        return transcription
+
     @abstractmethod
-    def get_openai_client(self, max_retries: int = None):
+    def get_openai_client(self, max_retries: int = None) -> Transcription:
         """
         OpenAI APIクライアントを取得します。具体的な実装はサブクラスで行います。
 
