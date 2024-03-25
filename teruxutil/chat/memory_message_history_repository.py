@@ -33,12 +33,11 @@ class MemoryMessageHistoryRepository(BaseMessageHistoryRepository):
         """
 
         self.max_tokens = max_tokens or _config['chat_history_max_tokens']
-        self.encoding_model = encoding_model or _config['model']
+        self.encoding_model = encoding_model or _config['model_name']
         self.messages = []
 
     def save_message(self, message: Message) -> None:
         self.messages.append(message)
-        self.clear_old_messages(message.session_id)
 
     def get_all_messages(self, session_id:str) -> List[Message]:
         return [message for message in self.messages if message.session_id == session_id]
@@ -62,3 +61,12 @@ class MemoryMessageHistoryRepository(BaseMessageHistoryRepository):
             if session_messages:
                 oldest_message = session_messages.pop(0)
                 self.messages.remove(oldest_message)
+
+    def clear_all_messages(self, session_id: str) -> None:
+        """
+        指定されたセッションIDに関連するメッセージをクリアします。
+        Args:
+            session_id (str): クリアするメッセージのセッションID。
+        """
+
+        self.messages = [message for message in self.messages if message.session_id != session_id]

@@ -16,3 +16,7 @@ class BaseMessageHistoryRepository(ABC):
     @abstractmethod
     def clear_old_messages(self, session_id: str) -> None:
         pass
+
+    @abstractmethod
+    def clear_all_messages(self, session_id: str) -> None:
+        pass

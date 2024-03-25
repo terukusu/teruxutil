@@ -1,61 +1,19 @@
 import base64
 import json
+import uuid
 
 from abc import ABC, abstractmethod
 from typing import Callable, Type, Any, List
 
 from openai import AzureOpenAI as OriginalAzureOpenAI, OpenAI as OriginalOpenAI
+from openai.types.chat import ChatCompletionMessage
 from pydantic import BaseModel
 
 from teruxutil.config import Config
+from .chat import FirestoreMessageHistoryRepository, MessageHistory, message_history
 
 _config = Config()
 _DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE = 10
-
-
-class Message:
-    def __init__(self, role: str, content: Any):
-        self.role = role
-        self.content = content
-
-    def dict(self):
-        return {
-            'role': self.role,
-            'content': self.content
-        }
-
-
-class MessageHistory:
-    def __init__(self, history=None, max_tokens=None):
-            self.history = history or []
-            self.max_tokens = max_tokens or _config['chat_history_max_tokens']
-
-    def add_ai_message(self, message):
-        self.add_message('AI', message)
-
-    def add_user_message(self, message):
-        self.add_message('User', message)
-
-    def add_system_message(self, message):
-        self.add_message('System', message)
-
-    def add_message(self, speaker_type, message):
-        self.history.append({
-            'type': speaker_type,
-            'message': message
-        })
-
-        # max_tokenを超えない程度に履歴を減らす
-        if len(self.message_history()) > self.max_tokens:
-            while len(self.message_history()) > self.max_tokens:
-                del self.history[0]
-
-    def message_history(self):
-        return '\n'.join([f'{x["type"]}:\n{x["message"]}' for x in self.history])
-
-    def __repr__(self):
-        props = ', '.join([f"{k}={v!r}" for k, v in self.__dict__.items()])
-        return f"{self.__class__.__name__}({props})"
 
 
 class FunctionDefinition(BaseModel):
@@ -64,7 +22,7 @@ class FunctionDefinition(BaseModel):
     関数に関連するメタデータ（モデル、説明）および実行ロジックを保持します。
 
     Attributes:
-        model (Type[BaseModel]): 関数に関連付けられたPydanticモデルの型。
+        model (Type[BaseModel]): 関数の入力値を表すPydanticモデルの型。
         description (str): 関数の説明文。
         function (Callable[[Type[BaseModel]], Any]): `self.model`型のインスタンスを
                                                       引数として受け取り、何らかの処理を行う関数やメソッド。
@@ -134,11 +92,22 @@ class ChatCompletionPayloadBuilder:
 
         return self
 
-    def add_ai_message(self, message):
+    def add_ai_message(self, prompt:str):
+        if not prompt:
+            return self
+
+        self.payload['messages'].append({
+            'role': 'assistant',
+            'content': prompt
+        })
+
+        return self
+
+    def add_ai_message_obj(self, message: ChatCompletionMessage):
         if not message:
             return self
 
-        # {'tool_calls': None} を含んでいるとエラーに成るので除去
+        # {'tool_calls': None} を含んでいると非Noneバリデートに引っかかってエラーに成るので除去
         copied_message = {k: v for k, v in message.items() if k != 'tool_calls'}
 
         self.payload['messages'].append(copied_message)
@@ -165,7 +134,9 @@ class ChatCompletionPayloadBuilder:
 
         for mime_type, image_bin in images:
             image_b64 = base64.b64encode(image_bin).decode('ascii')
-            self.payload['messages'][0]['content'].append({
+            user_message = next((msg for msg in reversed(self.payload['messages']) if msg['role'] == 'user'), None)
+
+            user_message['content'].append({
                 'type': 'image_url',
                 'image_url': {'url': f'data:{mime_type};base64,{image_b64}'}
             })
@@ -242,7 +213,8 @@ class BaseOpenAI(ABC):
     """
 
     def __init__(self, *, api_key: str = None, model_name: str = None,
-                 max_tokens: int = None, temperature: float = None, max_retries: int = None):
+                 max_tokens: int = None, temperature: float = None, max_retries: int = None,
+                 chat_id: str = None, history_enabled: bool = False):
         """
         BaseOpenAIクラスのインスタンスを初期化します。
 
@@ -251,6 +223,8 @@ class BaseOpenAI(ABC):
         :param max_tokens: 応答に含める最大トークン数。
         :param temperature: 応答の多様性を制御するための温度パラメータ。
         :param max_retries: APIリクエストの最大リトライ回数。
+        :param chat_id: チャットID。履歴を有効にする場合は必要。
+        :param history_enabled: メッセージ履歴の有効化。
         """
 
         self.api_key = api_key or _config['api_key']
@@ -258,6 +232,12 @@ class BaseOpenAI(ABC):
         self.max_tokens = max_tokens or _config['max_tokens']
         self.temperature = temperature or _config['temperature']
         self.max_retries = max_retries or _config['max_retries']
+        self.history_enabled = history_enabled or _config['history_enabled']
+        self.chat_id = chat_id or str(uuid.uuid4())
+
+        if self.history_enabled:
+            history_repository = FirestoreMessageHistoryRepository()
+            self.history = MessageHistory(session_id=self.chat_id, repository=history_repository)
 
     def chat_completion(self, prompt: str, *,
                         images: list[(str, bytes)] = None,
@@ -275,21 +255,35 @@ class BaseOpenAI(ABC):
         :return: OpenAI APIからの応答。
         """
 
-        builder = (ChatCompletionPayloadBuilder(
+        builder = ChatCompletionPayloadBuilder(
             kwargs.get('model_name') or self.model_name,
             kwargs.get('max_tokens') or self.max_tokens,
-            kwargs.get('temperature') or self.temperature)
-           .add_user_message(prompt)
-           .add_images(images)
-           .add_response_class(response_class)
-           .add_functions(functions))
+            kwargs.get('temperature') or self.temperature
+        )
+
+        if self.history_enabled:
+            message_list = self.history.get_history()
+            for message in message_list:
+                if message.role == message_history.ROLE_AI:
+                    builder.add_ai_message(message.content)
+                elif message.role == message_history.ROLE_USER:
+                    builder.add_user_message(message.content)
+
+        builder = (builder.add_user_message(prompt)
+                   .add_images(images)
+                   .add_response_class(response_class)
+                   .add_functions(functions))
 
         payload = builder.build()
+
+        print(f'payload: {payload}')
 
         client = self.get_openai_client(kwargs.get('max_retries'))
 
         max_retry_for_format_ai_message = _DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE
         retry_for_format_ai_message = 0
+
+        return_value = None
 
         while True:
             result = client.chat.completions.create(**payload)
@@ -303,12 +297,12 @@ class BaseOpenAI(ABC):
 
                     raise Exception("format_ai_message function のリトライ最大回数に到達しましたが、実行されませんでした。")
                 else:
-                    return result
-
-            print(f'aaaaa: {result.choices[0].message.function_call.name}')
+                    return_value = result
+                    break
 
             if result.choices[0].message.function_call.name == 'format_ai_message':
-                return result
+                return_value = result
+                break
 
             function_call = result.choices[0].message.function_call
             target_function = next(x.function for x in functions if x.function.__name__ == function_call.name)
@@ -317,13 +311,22 @@ class BaseOpenAI(ABC):
             # function の実行
             func_result = target_function(**func_args)
 
-            builder.add_ai_message(result.choices[0].message.dict())
+            builder.add_ai_message_obj(result.choices[0].message.dict())
             builder.add_function_response(target_function.__name__, func_result)
 
             # payload の更新
             payload = builder.build()
 
-        return result
+        if self.history_enabled:
+            if result.choices[0].message.function_call:
+                ai_message = result.choices[0].message.function_call.arguments
+            else:
+                ai_message = result.choices[0].message.content
+
+            self.history.add_user_message(prompt)
+            self.history.add_ai_message(ai_message)
+
+        return return_value
 
     @abstractmethod
     def get_openai_client(self, max_retries: int = None):

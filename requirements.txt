@@ -2,3 +2,4 @@ openai
 pyyaml
 pydantic
 tiktoken
+google-cloud-firestore
