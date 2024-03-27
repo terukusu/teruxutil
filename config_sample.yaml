@@ -6,7 +6,19 @@ config:
   api_key:
   azure_endpoint: # 本家 OpenAIでは不要
   model_name: gpt-4
+  audio_transcript_model_name: whisper-1  # ← OpenAI用
+  #audio_transcript_model_name: whisper # ← Azure用
+  vision_model_name: gpt-4-vision-preview
   temperature: 0.6
   max_tokens: 2000
   api_version: 2023-12-01-preview
   max_retries: 10
+  history_enabled: false
+
+  #### teruxutil.chat モジュール の設定 #####
+  chat_history_max_tokens: 2000
+  chat_history_firestore_collection_name: txu_chat_history
+
+  #### teruxutil.firestore モジュール の設定 #####
+  cloud_firestore_database_name: (default)
+  cloud_firestore_collection_name: txu_default

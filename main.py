@@ -49,7 +49,7 @@ def main():
     client_class = openai.OpenAI
 
     # 一番シンプル
-    # client = client_class()
+    client = client_class()
     # result = client.chat_completion('こんにちは')
 
     # カスタムレスポンスクラスを使う
@@ -61,8 +61,8 @@ def main():
     result = client.chat_completion('この画像を分析して', images=[('image/png', image)])
 
     # カスタム関数を使う
-    client = client_class()
-    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
+    # client = client_class()
+    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 
@@ -103,4 +103,4 @@ def main3():
 
 
 if __name__ == '__main__':
-    main3()
+    main()
