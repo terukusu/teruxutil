@@ -1,0 +1,120 @@
+gcloud のよく使うコマンドなどなど
+
+■ Cloud Run: ソースからのデプロイ。Cloud SQL Proxyを使う場合
+- 汎用最小限
+gcloud run deploy hello-cloudrun  --source=. --concurrency=5 --min-instances=0 --max-instances=1 --memory=512Mi --add-cloudsql-instances <Project ID>:<region>:<Cloud SQL Instance name> --allow-unauthenticated --region=us-central1
+
+
+- 過去のイメージを削除
+※ latest はエラーで削除されないので、latest以外のイメージだけが削除される
+gcloud artifacts docker images list <REGION>-docker.pkg.dev/<PROJECT_ID>/cloud-run-source-deploy/<CLOUD_RUN_NAME> | tail -n +2 | while read l; do i=$(echo $l | sed -E 's/ +/ /g' | cut -d' ' -f 1); d=$(echo $l | sed -E 's/ +/ /g' | cut -d' ' -f 2); gcloud artifacts docker images delete -q ${i}@${d};done
+
+- 過去のリビジョンの削除
+gcloud run revisions list --region=<REGION> | tail -n +2 | sed -E 's/ +/ /g' | while read l; do r=$(echo $l | cut -d' ' -f2); active=$(echo $l | cut -d' ' -f3); if [ "$active" != "yes" ]; then gcloud run revisions delete --region=<REGION> -q $r; fi; done
+
+■ Cloud Run with Docker
+● アーティファクトレジストリにレポジトリを作成
+gcloud artifacts repositories create <REPO_NAME> --repository-format=docker --location=<REGION> --project=<PROJECT_ID>
+
+● アーティファクトレジストリに push
+docker build . --tag REGION-docker.pkg.dev/PROJECT_ID/REPO_NAME/PATH:TAG
+gcloud auth configure-docker REGION-docker.pkg.dev
+docker push REGION-docker.pkg.dev/PROJECT_ID/REPO_NAME/PATH:TAG
+
+● デプロイ
+↑のイメージURLを --image に指定して、あとはソースデプロイと同じ
+
+●レポジロトリブラウズ
+gcloud artifacts repositories list --project=<PROJECT_ID>
+
+● Docker操作
+sudo docker exec -i -t CONTAINER_ID bash
+
+
+■ サービスアカウント
+- 作成
+gcloud iam service-accounts create <SA_NAME> --display-name=<SA_NAME> --description="hogehoge"
+- 権限設定
+gcloud projects add-iam-policy-binding <PROJECT_ID> --member="serviceAccount:cloud-sql-proxy@<PROJECT_ID>.iam.gserviceaccount.com" --role="roles/cloudsql.client"
+- キー作成
+gcloud iam service-accounts keys create sa_<SA_NAME>_<PROJECT_ID>.json --iam-account=<SA_NAME>@<PROJECT_ID>.iam.gserviceaccount.com
+- gcloud をサービスアカウト権限で認証
+gcloud auth activate-service-account <SA_NAME>@<PROJECT_ID>.iam.gserviceaccount.com --key-file=sa_<SA_NAME>_<PROJECT_ID>.json
+
+■ GCE
+- 一番安いインスタンス作成
+gcloud compute instances create testvm --machine-type f1-micro --zone us-central1-a --image-project ubuntu-os-cloud --image-family ubuntu-minimal-2310-amd64 --boot-disk-type pd-standard --boot-disk-size 10
+- 接続 (vmインスタンスの Cloud SQL Proxy 経由でCloud SQLを使う場合)
+gcloud compute ssh ubuntu@testvm -- -L9470:localhost:9470
+- SCP
+gcloud compute scp <SERVICE ACCOUNT AUTH JSON FILE> "ubuntu@testvm:~/"
+
+gcloud sql instances create test --database-version=POSTGRES_15 --storage-size=128Mi --cpu=1 --memory=256Mi --storage-type=HDD --time-zone=Asia/Tokyo --timeout=600 --region=us-central1 --collation=jq_JP.UTF-8 --no-backup --root-password=hogehoge
+
+- VMインスタンスで (Ubuntu) の Google Cloud SDK CLIのインストール
+# Cloud SQL の踏み台として使う場合は、以下もインストール
+sudo apt-get update
+sudo apt-get install apt-transport-https ca-certificates gnupg curl sudo
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+sudo apt-get update && sudo apt-get install google-cloud-cli
+
+- Cloud SQL Proxyのインストール
+sudo apt install cloudsql_proxy
+sudo apt install postgresql-client
+
+■ Cloud SQL
+- 一番安いインスタンス作成
+gcloud sql instances create <INSTANCE NAME> --database-version=POSTGRES_15 --edition=enterprise --storage-size=10Gi --tier=db-f1-micro --storage-type=HDD --database-flags=timezone=Asia/Tokyo,log_timezone=Asia/Tokyo --timeout=600 --region=us-central1 --no-backup --root-password=<PASSWORD>
+
+- 接続
+gcloud beta sql connect hello-cloud-sql --user=postgres -d postgres
+
+- DB作成
+ CREATE DATABASE <TABLE NAME> OWNER <DB USER> ENCODING ‘UTF8’  LC_COLLATE ‘ja_JP.UTF-8’ LC_CTYPE ‘ja_JP.UTF-8’ TEMPLATE ‘template0’;
+ ALTER DATABASE dbname SET TIMEZONE TO 'Asia/Tokyo';
+
+- ロケール関連の確認
+- SELECT name,setting,context from pg_settings WHERE name LIKE 'lc%';
+
+よく使うpsqlコマンド
+\dt テーブル一覧
+\d テーブル定義
+\q 終了
+\l データベース一覧（Collate, Ctypeの確認）
+
+■ Cloud Functions
+- デプロイ
+$ gcloud functions deploy helloworld --source=<ソースディレクトリ> --entry-point=<エントリポイント> --allow-unauthenticated --region=us-central1 --gen2 --runtime=python312 --memory=128Mi [--trigger-http] [--trigger-topic=<トピック名>] [--trigger-event=<イベント名>] [--trigger-resource=<リソース名>]
+
+
+■ ADC(Application Default Credentials)
+- ADCで使うサービスアカウントを指定
+
+-- 現在の認証情報を破棄
+gcloud auth application-default revoke
+-- 環境変数で指定
+export GOOGLE_APPLICATION_CREDENTIALS=<サービスアカウント認証情報jsonファイル>
+
+
+- 不要になった認証を削除
+※ これをやらないと、ADCで認証したサービスアカウントが使われてしまう
+※ 認証情報jsonはが消えるわけではない。発行されたトークンが消えるだけ
+
+gcloud auth application-default revoke
+
+
+- ADCを使わず明示的にサービスアカウントを指定する場合のコード
+    from google.oauth2 import service_account
+
+
+    with oepn('service_account.json') as f:
+        cred_file_data = json.loads(f.read())
+
+    credentials = service_account.Credentials.from_service_account_info(cred_file_data)
+
+    # Firestoreの場合
+    client = firestore.Client(credentials=credentials)
+
+    # DocuemntAIの場合
+    client = documentai.DocumentProcessorServiceClient(credentials=credentials)
