@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/Users/teru/Documents/dev_resources/sa_playground_test-84033.json'
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'pass to credential file'
 os.environ['TXU_CONFIG_FILE'] = 'config.yaml'
 
 from teruxutil import openai, firestore, langchain_util
