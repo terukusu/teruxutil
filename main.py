@@ -1,5 +1,12 @@
+"""
+これは実験用のコード。
+"""
+
 import logging
 import os
+
+
+from langchain_core.documents import Document
 
 from pydantic import BaseModel, Field
 
@@ -7,14 +14,19 @@ from pydantic import BaseModel, Field
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/Users/teru/Documents/dev_resources/sa_playground_test-84033.json'
 os.environ['TXU_CONFIG_FILE'] = 'config.yaml'
 
-from teruxutil import openai, firestore
+from teruxutil import openai, firestore, langchain_util
 from teruxutil.chat import FirestoreMessageHistoryRepository, Message
+from teruxutil.cloudsql import DatabaseManager
+from teruxutil.config import Config
+
 
 logging.basicConfig(
     level=logging.DEBUG,
     encoding='utf-8',
     format='%(asctime)s %(name)s %(levelname)s %(message)s',
 )
+
+_config = Config()
 
 
 class Response(BaseModel):
@@ -102,5 +114,44 @@ def main3():
     print(result)
 
 
+def main4():
+    client = openai.OpenAI()
+    msg = 'いい朝ですね'
+    res = client.create_embeddings([msg])
+    v = res.data[0].embedding
+    print(v)
+
+    with DatabaseManager() as db_manager:
+        result = db_manager.execute_query(
+            "INSERT INTO embedding (collection_id, content, metadata, vector) VALUES (1, %s, NULL, %s) RETURNING id",
+            msg, v)
+        print(result)
+
+        return_id = result[0].id
+
+        result = db_manager.execute_query(
+            "SELECT id, collection_id, content, created_at, metadata FROM embedding WHERE id = %s", return_id)
+
+        print(result)
+
+
+def main5():
+
+    vs = langchain_util.get_vector_store(cloud_sql_database_name='test')
+
+    # documents = [
+    #     Document(page_content='おはようございます', metadata={'type': 'test', 'page': 1}),
+    #     Document(page_content='こんにちは', metadata={'type': 'test', 'page': 2}),
+    #     Document(page_content='こんばんは', metadata={'type': 'test', 'page': 3}),
+    #     Document(page_content='さようなら', metadata={'type': 'test', 'page': 4}),
+    #     Document(page_content='どなたか存じ上げませんが', metadata={'type': 'test', 'page': 5}),
+    # ]
+    # vs.add_documents(documents)
+
+    result = vs.similarity_search('いい朝ですね。', k=3)
+
+    print(result)
+
+
 if __name__ == '__main__':
-    main()
+    main5()

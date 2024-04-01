@@ -1,5 +1,25 @@
-openai
 pyyaml
 pydantic
+
+# openai
+openai
+
+# langchain_util
+pandas
+chromadb
+langchain-openai
+langchain-community
+
+# document
+# langchain
+
+# chat
 tiktoken
+
+# firestore
 google-cloud-firestore
+
+# cludsql
+psycopg2
+pgvector
+sqlalchemy

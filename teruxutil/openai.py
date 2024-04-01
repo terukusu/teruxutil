@@ -228,12 +228,12 @@ class BaseOpenAI(ABC):
         :param history_enabled: メッセージ履歴の有効化。
         """
 
-        self.api_key = api_key or _config['api_key']
-        self.model_name = model_name or _config['model_name']
-        self.max_tokens = max_tokens or _config['max_tokens']
-        self.temperature = temperature or _config['temperature']
-        self.max_retries = max_retries or _config['max_retries']
-        self.history_enabled = history_enabled or _config['history_enabled']
+        self.api_key = api_key or _config['openai_api_key']
+        self.model_name = model_name or _config['openai_model_name']
+        self.max_tokens = max_tokens or _config['openai_max_tokens']
+        self.temperature = temperature or _config['openai_temperature']
+        self.max_retries = max_retries or _config['openai_max_retries']
+        self.history_enabled = history_enabled or _config['openai_history_enabled']
         self.chat_id = chat_id or str(uuid.uuid4())
 
         if self.history_enabled:
@@ -259,7 +259,7 @@ class BaseOpenAI(ABC):
 
         model_name = kwargs.get('model_name') or self.model_name
         if images:
-            model_name = kwargs.get('model_name') or _config['vision_model_name']
+            model_name = kwargs.get('model_name') or _config['openai_vision_model_name']
 
         builder = ChatCompletionPayloadBuilder(
             model_name,
@@ -338,11 +338,26 @@ class BaseOpenAI(ABC):
         client = self.get_openai_client(kwargs.get('max_retries'))
         with open(input_file_path, 'rb') as audio_bytes:
             transcription = client.audio.transcriptions.create(
-                model=kwargs.get('model_name') or _config['audio_transcript_model_name'],
+                model=kwargs.get('model_name') or _config['openai_audio_transcript_model_name'],
                 file=audio_bytes
             )
 
         return transcription
+
+    def create_embeddings(self, texts: list[str], *args, **kwargs):
+        client = self.get_openai_client(kwargs.get('max_retries'))
+
+        # 空白を除去しておかないと想定通りの結果が得られない、とのこと
+        # ソース：https://learn.microsoft.com/ja-jp/azure/ai-services/openai/how-to/embeddings?tabs=console#replace-newlines-with-a-single-space
+        texts = [text.replace("\n", " ") for text in texts]
+
+        # TODO self.model_name の意義を検討
+        result = client.embeddings.create(
+            input=texts,
+            model=kwargs.get('model_name') or _config['openai_embedding_model_name'],
+        )
+
+        return result
 
     @abstractmethod
     def get_openai_client(self, max_retries: int = None) -> Transcription:
@@ -380,8 +395,8 @@ class AzureOpenAI(BaseOpenAI):
         super().__init__(api_key=api_key, model_name=model_name, max_tokens=max_tokens,
                          temperature=temperature, max_retries=max_retries)
 
-        self.api_version = api_version or _config['api_version']
-        self.azure_endpoint = azure_endpoint or _config['azure_endpoint']
+        self.api_version = api_version or _config['openai_api_version']
+        self.azure_endpoint = azure_endpoint or _config['openai_azure_endpoint']
 
     def get_openai_client(self, max_retries: int = None):
         """
