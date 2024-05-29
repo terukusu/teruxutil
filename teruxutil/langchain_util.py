@@ -73,6 +73,22 @@ def get_openai_embeddings(*args, **kwargs):
     return embeddings
 
 
+def get_vector_store_bigquery(*args, **kwargs):
+    from langchain_google_community.bigquery_vector_search import BigQueryVectorSearch
+
+    embeddings = get_embeddings(kwargs.get('langchain_embedding_type'), **kwargs)
+
+    db = BigQueryVectorSearch(
+        embedding=embeddings,
+        project_id=kwargs.get('google_cloud_project_id', _config['google_cloud_project_id']),
+        dataset_name=kwargs.get('langchain_chromadb_folder', _config['langchain_chromadb_folder']),
+        table_name=kwargs.get('langchain_vector_store_collection_name', _config['langchain_vector_store_collection_name']),
+        location=kwargs.get('bq_region', _config['bq_region'])
+    )
+
+    return db
+
+
 def get_vector_store_chroma(*args, **kwargs):
     import chromadb
     from langchain_community.vectorstores import Chroma
@@ -81,7 +97,7 @@ def get_vector_store_chroma(*args, **kwargs):
 
     client = chromadb.PersistentClient(path=persist_directory)
 
-    embeddings = get_embeddings(kwargs['langchain_embedding_type'], **kwargs)
+    embeddings = get_embeddings(kwargs.get('langchain_embedding_type'), **kwargs)
 
     db = Chroma(
                 collection_name=kwargs.get('langchain_vector_store_collection_name', _config['langchain_vector_store_collection_name']),
@@ -175,6 +191,7 @@ def get_chat(chat_type: str = None, *args, **kwargs):
 
 
 _GET_VECTOR_STORE_FUNCTIONS = {
+    'bigquery': get_vector_store_bigquery,
     'pgvector': get_vector_store_pgvector,
     'chroma': get_vector_store_chroma,
 }

@@ -5,10 +5,13 @@ pydantic
 openai
 
 # langchain_util
+google-cloud-bigquery
 pandas
 chromadb
+langchain-core
 langchain-openai
 langchain-community
+langchain-google-community
 
 # document
 # langchain
