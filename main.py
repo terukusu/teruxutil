@@ -5,9 +5,6 @@
 import logging
 import os
 
-
-from langchain_core.documents import Document
-
 from pydantic import BaseModel, Field
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'pass to credential file'
@@ -17,7 +14,6 @@ from teruxutil import openai, firestore, langchain_util
 from teruxutil.chat import FirestoreMessageHistoryRepository, Message
 from teruxutil.cloudsql import DatabaseManager
 from teruxutil.config import Config
-from langchain_google_community.bigquery_vector_search import BigQueryVectorSearch
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -59,9 +55,10 @@ def main():
     # client_class = openai.AzureOpenAI
     client_class = openai.OpenAI
 
+
     # 一番シンプル
     client = client_class()
-    # result = client.chat_completion('こんにちは')
+    result = client.chat_completion('こんにちは')
 
     # カスタムレスポンスクラスを使う
     # client = client_class()
@@ -73,7 +70,7 @@ def main():
 
     # カスタム関数を使う
     # client = client_class()
-    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
+    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 

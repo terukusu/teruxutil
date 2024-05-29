@@ -88,7 +88,7 @@ class ChatCompletionPayloadBuilder:
 
         self.payload['messages'].append({
             'role': 'user',
-            'content': [{'type': 'text', 'text': prompt}]
+            'content': prompt
         })
 
         return self
@@ -136,6 +136,10 @@ class ChatCompletionPayloadBuilder:
         for mime_type, image_bin in images:
             image_b64 = base64.b64encode(image_bin).decode('ascii')
             user_message = next((msg for msg in reversed(self.payload['messages']) if msg['role'] == 'user'), None)
+
+            if not isinstance(user_message['content'], list):
+                original_value = user_message['content']
+                user_message['content'] = [{'type': 'text', 'text': original_value}]
 
             user_message['content'].append({
                 'type': 'image_url',
@@ -258,8 +262,6 @@ class BaseOpenAI(ABC):
         """
 
         model_name = kwargs.get('model_name') or self.model_name
-        if images:
-            model_name = kwargs.get('model_name') or _config['openai_vision_model_name']
 
         builder = ChatCompletionPayloadBuilder(
             model_name,
@@ -336,9 +338,12 @@ class BaseOpenAI(ABC):
 
     def audio_transcription(self, input_file_path, *args, **kwargs) -> Transcription:
         client = self.get_openai_client(kwargs.get('max_retries'))
+
+        model_name = kwargs.get('model_name') or self.model_name
+
         with open(input_file_path, 'rb') as audio_bytes:
             transcription = client.audio.transcriptions.create(
-                model=kwargs.get('model_name') or _config['openai_audio_transcript_model_name'],
+                model=model_name,
                 file=audio_bytes
             )
 
