@@ -9,16 +9,19 @@ config:
   openai_embedding_model_name: text-embedding-3-small
   openai_temperature: 0.6
   openai_max_tokens: 2000
-  openai_api_version: 2023-12-01-preview
+  openai_api_version: 2024-02-15-preview # Azure用
   openai_max_retries: 10
   openai_history_enabled: false
 
   #### teruxutil.langchain_util モジュール の設定 #####
+  # chat や embedding の設定
+  langchain_embedding_type: openai # openai or azure
+  langchain_chat_type: openai # openai or azure
+
+  # vector store の設定
   langchain_chromadb_folder: langchain_vector_store # bigquery の場合データセット名
   langchain_vector_store_collection_name: langchain_collection # bigquqery の場合テーブル名
   langchain_vector_store_type: pgvector # pgvector or chroma or bigqeury
-  langchain_embedding_type: openai # openai or azure
-  langchain_chat_type: openai # openai or azure
 
   #### teruxutil.chat モジュール の設定 #####
   chat_history_max_tokens: 2000
@@ -39,5 +42,6 @@ config:
   cloud_sql_database_password:
   cloud_sql_database_name: # e.g. sample_db
 
+  #### teruxutil.bigquery モジュール(まだ無いけど :-p) の設定 #####
   # langchain_util モジュール の bigquery_vector_search を用いた vector storeにも使用されます
   bq_region: us-central1
