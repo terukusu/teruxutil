@@ -10,7 +10,6 @@ from langchain_core.documents import Document
 
 from pydantic import BaseModel, Field
 
-
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'pass to credential file'
 os.environ['TXU_CONFIG_FILE'] = 'config.yaml'
 
@@ -18,7 +17,7 @@ from teruxutil import openai, firestore, langchain_util
 from teruxutil.chat import FirestoreMessageHistoryRepository, Message
 from teruxutil.cloudsql import DatabaseManager
 from teruxutil.config import Config
-
+from langchain_google_community.bigquery_vector_search import BigQueryVectorSearch
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -70,11 +69,11 @@ def main():
 
     # 画像を使う
     # client = client_class(model_name='gpt-4-vision-preview')
-    result = client.chat_completion('この画像を分析して', images=[('image/png', image)])
+    # result = client.chat_completion('この画像を分析して', images=[('image/png', image)])
 
     # カスタム関数を使う
     # client = client_class()
-    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
+    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 
@@ -153,5 +152,20 @@ def main5():
     print(result)
 
 
+def main6():
+    db = langchain_util.get_vector_store()
+
+    db.add_texts([
+        'おはようございます',
+        'こんにちは',
+        'こんばんは',
+        'さようなら',
+        'なんだなんだ君は'])
+
+    result = db.similarity_search('いい朝ですね')
+
+    print(result)
+
+
 if __name__ == '__main__':
-    main5()
+    main6()
