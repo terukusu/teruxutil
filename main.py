@@ -5,6 +5,7 @@
 import logging
 import os
 
+from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'pass to credential file'
@@ -133,16 +134,16 @@ def main4():
 
 def main5():
 
-    vs = langchain_util.get_vector_store(cloud_sql_database_name='test')
+    vs = langchain_util.get_vector_store(langchain_vector_store_collection_name='test')
 
-    # documents = [
-    #     Document(page_content='おはようございます', metadata={'type': 'test', 'page': 1}),
-    #     Document(page_content='こんにちは', metadata={'type': 'test', 'page': 2}),
-    #     Document(page_content='こんばんは', metadata={'type': 'test', 'page': 3}),
-    #     Document(page_content='さようなら', metadata={'type': 'test', 'page': 4}),
-    #     Document(page_content='どなたか存じ上げませんが', metadata={'type': 'test', 'page': 5}),
-    # ]
-    # vs.add_documents(documents)
+    documents = [
+        Document(page_content='おはようございます', metadata={'type': 'test', 'page': 1}),
+        Document(page_content='こんにちは', metadata={'type': 'test', 'page': 2}),
+        Document(page_content='こんばんは', metadata={'type': 'test', 'page': 3}),
+        Document(page_content='さようなら', metadata={'type': 'test', 'page': 4}),
+        Document(page_content='どなたか存じ上げませんが', metadata={'type': 'test', 'page': 5}),
+    ]
+    vs.add_documents(documents)
 
     result = vs.similarity_search('いい朝ですね。', k=3)
 
