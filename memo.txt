@@ -118,3 +118,8 @@ gcloud auth application-default revoke
 
     # DocuemntAIの場合
     client = documentai.DocumentProcessorServiceClient(credentials=credentials)
+
+■ BigQuery関連
+● CSVインポート
+% bq --location=us-central1 load --source_format=CSV --allow_quoted_newlines=true gen_ai_summit24.session "hoge.csv"
+
