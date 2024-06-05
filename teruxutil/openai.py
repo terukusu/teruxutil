@@ -1,9 +1,10 @@
 import base64
 import json
+import logging
 import uuid
 
 from abc import ABC, abstractmethod
-from typing import Callable, Type, Any, List
+from typing import Any, Callable, List, Type, Union
 
 from openai import AzureOpenAI as OriginalAzureOpenAI, OpenAI as OriginalOpenAI
 from openai.types.chat import ChatCompletionMessage
@@ -11,7 +12,7 @@ from openai.types.audio import Transcription
 from pydantic import BaseModel
 
 from teruxutil.config import Config
-from .chat import FirestoreMessageHistoryRepository, MessageHistory, message_history
+from .chat import MemoryMessageHistoryRepository, FirestoreMessageHistoryRepository, MessageHistory, message_history
 
 _config = Config()
 _DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE = 10
@@ -74,6 +75,17 @@ class ChatCompletionPayloadBuilder:
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.payload: dict[str, Any] = {'messages': []}
+
+    def add_system_message(self, prompt):
+        if not prompt:
+            return self
+
+        self.payload['messages'].append({
+            'role': 'system',
+            'content': prompt
+        })
+
+        return self
 
     def add_user_message(self, prompt):
         """
@@ -219,7 +231,8 @@ class BaseOpenAI(ABC):
 
     def __init__(self, *, api_key: str = None, model_name: str = None,
                  max_tokens: int = None, temperature: float = None, max_retries: int = None,
-                 chat_id: str = None, history_enabled: bool = False):
+                 chat_id: str = None, history_enabled: bool = False,
+                 system_message: str = None):
         """
         BaseOpenAIクラスのインスタンスを初期化します。
 
@@ -228,8 +241,9 @@ class BaseOpenAI(ABC):
         :param max_tokens: 応答に含める最大トークン数。
         :param temperature: 応答の多様性を制御するための温度パラメータ。
         :param max_retries: APIリクエストの最大リトライ回数。
-        :param chat_id: チャットID。履歴を有効にする場合は必要。
         :param history_enabled: メッセージ履歴の有効化。
+        :param chat_id: チャットID。履歴を有効にする場合は必要。
+        :param system_message: モデルへの支持。キャラ付けや制限事項など。
         """
 
         self.api_key = api_key or _config['openai_api_key']
@@ -239,10 +253,37 @@ class BaseOpenAI(ABC):
         self.max_retries = max_retries or _config['openai_max_retries']
         self.history_enabled = history_enabled or _config['openai_history_enabled']
         self.chat_id = chat_id or str(uuid.uuid4())
+        self.system_message = system_message
 
         if self.history_enabled:
             history_repository = FirestoreMessageHistoryRepository()
+            # history_repository = MemoryMessageHistoryRepository()
             self.history = MessageHistory(session_id=self.chat_id, repository=history_repository)
+
+    def simple_chat_completion(self, prompt: str, *,
+                        images: list[(str, bytes)] = None,
+                        response_class: Type[BaseModel] = None,
+                        functions: List[FunctionDefinition] = None,
+                        **kwargs) -> Union[str, BaseModel]:
+        """
+        OpenAI の チャット機能を利用して、ユーザーからのプロンプトに基づいた応答を生成します。
+        応答はシンプルに文字列のみです。
+
+        :param prompt: ユーザーからのプロンプトテキスト。
+        :param images: プロンプトに添付する画像のリスト。(MIMEタイプ, 画像バイナリ)のタプルのリスト。
+        :param response_class: 応答のフォーマットを定義するクラス。
+        :param functions: 応答生成に使用される追加の関数定義のリスト。
+        :param kwargs: その他のオプションパラメータ。
+        :return: OpenAI APIからの応答。文字列です。
+        """
+
+        result = self.chat_completion(prompt, images=images, response_class=response_class, functions=functions, **kwargs)
+
+        if response_class:
+            return response_class.parse_obj(json.loads(result.choices[0].message.function_call.arguments))
+
+        return result.choices[0].message.content
+
 
     def chat_completion(self, prompt: str, *,
                         images: list[(str, bytes)] = None,
@@ -250,15 +291,15 @@ class BaseOpenAI(ABC):
                         functions: List[FunctionDefinition] = None,
                         **kwargs):
         """
-        チャット完了機能を利用して、ユーザーからのプロンプトに基づいた応答を生成します。
-        画像を指定してた場合には、デフォルトのモデルは設定の「vision_model_name」キーの値になります。
+        OpenAI の チャット機能を利用して、ユーザーからのプロンプトに基づいた応答を生成します。
+        応答は OpenAIからの生のレスポンスを表すオブジェクトです。
 
         :param prompt: ユーザーからのプロンプトテキスト。
-        :param images: プロンプトに添付する画像のリスト。(MIMEタイプ, 画像バイナリ)のタプル。
+        :param images: プロンプトに添付する画像のリスト。(MIMEタイプ, 画像バイナリ)のタプルのリスト。
         :param response_class: 応答のフォーマットを定義するクラス。
         :param functions: 応答生成に使用される追加の関数定義のリスト。
         :param kwargs: その他のオプションパラメータ。
-        :return: OpenAI APIからの応答。
+        :return: OpenAI APIからの応答。生のオブジェクトです。
         """
 
         model_name = kwargs.get('model_name') or self.model_name
@@ -277,14 +318,15 @@ class BaseOpenAI(ABC):
                 elif message.role == message_history.ROLE_USER:
                     builder.add_user_message(message.content)
 
-        builder = (builder.add_user_message(prompt)
+        builder = (builder.add_system_message(kwargs.get('system_message') or self.system_message)
+                   .add_user_message(prompt)
                    .add_images(images)
                    .add_response_class(response_class)
                    .add_functions(functions))
 
         payload = builder.build()
 
-        print(f'payload: {payload}')
+        logging.info(f'payload: {payload}')
 
         client = self.get_openai_client(kwargs.get('max_retries'))
 
@@ -299,7 +341,7 @@ class BaseOpenAI(ABC):
             if not result.choices[0].message.function_call:
                 if response_class:
                     if retry_for_format_ai_message < max_retry_for_format_ai_message:
-                        print(f"format_ai_message function が実行されていません。リトライします..: retryCount={retry_for_format_ai_message}")
+                        logging.info(f"format_ai_message function が実行されていません。リトライします..: retryCount={retry_for_format_ai_message}")
                         retry_for_format_ai_message += 1
                         continue
 
@@ -335,6 +377,11 @@ class BaseOpenAI(ABC):
             self.history.add_ai_message(ai_message)
 
         return return_value
+
+    def simple_audio_transcription(self, input_file_path, *args, **kwargs) -> str:
+        result = self.audio_transcription(input_file_path, *args, **kwargs)
+
+        return result.text
 
     def audio_transcription(self, input_file_path, *args, **kwargs) -> Transcription:
         client = self.get_openai_client(kwargs.get('max_retries'))
@@ -384,7 +431,9 @@ class AzureOpenAI(BaseOpenAI):
 
     def __init__(self, *, api_key: str = None, model_name: str = None,
                  max_tokens: int = None, temperature: float = None, max_retries: int = None,
-                 api_version: str = None, azure_endpoint: str = None):
+                 api_version: str = None, azure_endpoint: str = None,
+                 history_enabled: bool = False, chat_id: str = None,
+                 system_message: str = None):
         """
         AzureOpenAIクラスのインスタンスを初期化します。
 
@@ -395,10 +444,14 @@ class AzureOpenAI(BaseOpenAI):
         :param max_retries: APIリクエストの最大リトライ回数。
         :param api_version: 使用するAPIのバージョン。
         :param azure_endpoint: Azure APIのエンドポイントURL。
+        :param history_enabled: メッセージ履歴の有効化。
+        :param chat_id: チャットID。履歴を有効にする場合は必要。
+        :param system_message: モデルへの支持。キャラ付けや制限事項など。
         """
 
         super().__init__(api_key=api_key, model_name=model_name, max_tokens=max_tokens,
-                         temperature=temperature, max_retries=max_retries)
+                         temperature=temperature, max_retries=max_retries, chat_id=chat_id,
+                         history_enabled=history_enabled, system_message=system_message)
 
         self.api_version = api_version or _config['openai_api_version']
         self.azure_endpoint = azure_endpoint or _config['openai_azure_endpoint']
@@ -432,7 +485,9 @@ class OpenAI(BaseOpenAI):
     """
 
     def __init__(self, *, api_key: str = None, model_name: str = None,
-                 max_tokens: int = None, temperature: float = None, max_retries: int = None):
+                 max_tokens: int = None, temperature: float = None, max_retries: int = None,
+                 history_enabled: bool = False, chat_id: str = None,
+                 system_message: str = None):
         """
         OpenAIクラスのインスタンスを初期化します。
 
@@ -441,10 +496,14 @@ class OpenAI(BaseOpenAI):
         :param max_tokens: 応答に含める最大トークン数。
         :param temperature: 応答の多様性を制御するための温度パラメータ。
         :param max_retries: APIリクエストの最大リトライ回数。
+        :param history_enabled: メッセージ履歴の有効化。
+        :param chat_id: チャットID。履歴を有効にする場合は必要。
+        :param system_message: モデルへの支持。キャラ付けや制限事項など。
         """
 
         super().__init__(api_key=api_key, model_name=model_name, max_tokens=max_tokens,
-                         temperature=temperature, max_retries=max_retries)
+                         temperature=temperature, max_retries=max_retries,
+                         history_enabled=history_enabled, chat_id=chat_id, system_message=system_message)
 
     def get_openai_client(self, max_retries: int = None):
         """

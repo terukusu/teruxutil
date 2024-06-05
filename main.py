@@ -8,7 +8,7 @@ import os
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'pass to credential file'
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'path to your service account json file'
 os.environ['TXU_CONFIG_FILE'] = 'config.yaml'
 
 from teruxutil import openai, firestore, langchain_util
@@ -53,13 +53,13 @@ def main():
         function=get_weather
     )
 
-    # client_class = openai.AzureOpenAI
-    client_class = openai.OpenAI
+    client_class = openai.AzureOpenAI
+    # client_class = openai.OpenAI
 
 
     # 一番シンプル
     client = client_class()
-    result = client.chat_completion('こんにちは')
+    # result = client.chat_completion('こんにちは')
 
     # カスタムレスポンスクラスを使う
     # client = client_class()
@@ -71,7 +71,8 @@ def main():
 
     # カスタム関数を使う
     # client = client_class()
-    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
+    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response, images=[('image/png', image)])
+    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 
@@ -166,4 +167,4 @@ def main6():
 
 
 if __name__ == '__main__':
-    main6()
+    main()

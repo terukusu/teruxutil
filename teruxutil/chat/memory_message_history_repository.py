@@ -33,7 +33,7 @@ class MemoryMessageHistoryRepository(BaseMessageHistoryRepository):
         """
 
         self.max_tokens = max_tokens or _config['chat_history_max_tokens']
-        self.encoding_model = encoding_model or _config['model_name']
+        self.encoding_model = encoding_model or _config['openai_model_name']
         self.messages = []
 
     def save_message(self, message: Message) -> None:

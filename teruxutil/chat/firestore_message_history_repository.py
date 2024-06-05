@@ -26,7 +26,7 @@ class FirestoreMessageHistoryRepository(BaseMessageHistoryRepository):
 
         self.collection_name = collection_name or _config['chat_history_firestore_collection_name']
         self.max_tokens = max_tokens or _config['chat_history_max_tokens']
-        self.encoding_model = encoding_model or _config['model_name']
+        self.encoding_model = encoding_model or _config['openai_model_name']
 
     def save_message(self, message: Message) -> None:
 

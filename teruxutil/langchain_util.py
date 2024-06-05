@@ -1,11 +1,9 @@
 import logging
 import os
 
-import sqlalchemy
 from langchain_openai.chat_models import AzureChatOpenAI, ChatOpenAI
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 
-from . import cloudsql
 from .config import Config
 
 _config = Config()
@@ -54,7 +52,7 @@ def get_openai_chat(*args, **kwargs):
 
 def get_azure_embeddings(*args, **kwargs):
     embeddings = AzureOpenAIEmbeddings(
-        deployment=kwargs.get('openai_embedding_model', _config['openai_embedding_model']),
+        deployment=kwargs.get('openai_embedding_model_name', _config['openai_embedding_model_name']),
         openai_api_version=kwargs.get('openai_api_version', _config['openai_api_version']),
         openai_api_type='azure',
         azure_endpoint=kwargs.get('openai_azure_endpoint', _config['openai_azure_endpoint']),
@@ -66,7 +64,7 @@ def get_azure_embeddings(*args, **kwargs):
 
 def get_openai_embeddings(*args, **kwargs):
     embeddings = OpenAIEmbeddings(
-        deployment=kwargs.get('openai_embedding_model',  _config['openai_embedding_model']),
+        deployment=kwargs.get('openai_embedding_model_name',  _config['openai_embedding_model_name']),
         openai_api_key=kwargs.get('openai_api_key',  _config['openai_api_key'])
     )
 
@@ -109,7 +107,9 @@ def get_vector_store_chroma(*args, **kwargs):
 
 
 def get_vector_store_pgvector(*args, **kwargs):
+    import sqlalchemy
     from langchain_community.vectorstores import PGVector
+    from . import cloudsql
 
     db_config = cloudsql.build_db_config(**kwargs)
 
