@@ -509,8 +509,6 @@ class OpenAI(BaseOpenAI):
         :param system_message: モデルへの支持。キャラ付けや制限事項など。
         """
 
-        print(f'OpenAI __init__: {api_key}')
-
         super().__init__(api_key=api_key, model_name=model_name, max_tokens=max_tokens,
                          temperature=temperature, max_retries=max_retries,
                          history_enabled=history_enabled, chat_id=chat_id, system_message=system_message)
