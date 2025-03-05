@@ -17,7 +17,7 @@ from teruxutil.cloudsql import DatabaseManager
 from teruxutil.config import Config
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARN,
     encoding='utf-8',
     format='%(asctime)s %(name)s %(levelname)s %(message)s',
 )
@@ -166,5 +166,33 @@ def main6():
     print(result)
 
 
+def main7():
+    client = openai.OpenAI()
+    
+    print("AIとのチャットを開始します。終了するには 'quit' または 'exit' と入力してください。")
+    
+    while True:
+        # ユーザー入力を取得
+        user_input = input("\nあなた: ")
+        
+        # 終了コマンドをチェック
+        if user_input.lower() in ['quit', 'exit', '終了']:
+            print("チャットを終了します。")
+            break
+        
+        try:
+            # APIリクエストを送信
+            response = client.chat_completion(user_input)
+            
+            # 応答を取得
+            ai_response = response.choices[0].message.content
+            
+            # AIの応答を表示
+            print(f"\nAI: {ai_response}")
+            
+            
+        except Exception as e:
+            print(f"エラーが発生しました: {e}")
+
 if __name__ == '__main__':
-    main3()
+    main7()
