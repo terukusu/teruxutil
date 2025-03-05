@@ -72,11 +72,11 @@ def get_openai_embeddings(*args, **kwargs):
 
 
 def get_vector_store_bigquery(*args, **kwargs):
-    from langchain_google_community.bigquery_vector_search import BigQueryVectorSearch
+    from langchain_google_community import BigQueryVectorStore
 
     embeddings = get_embeddings(kwargs.get('langchain_embedding_type'), **kwargs)
 
-    db = BigQueryVectorSearch(
+    db = BigQueryVectorStore(
         embedding=embeddings,
         project_id=kwargs.get('google_cloud_project_id', _config['google_cloud_project_id']),
         dataset_name=kwargs.get('langchain_chromadb_folder', _config['langchain_chromadb_folder']),

@@ -8,7 +8,7 @@ import os
 from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'path to your service account json file'
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/Users/kusunokiteruhiko/Documents/dev_resources/sa_test-84033-5b9f8cdfeafb.json'
 os.environ['TXU_CONFIG_FILE'] = 'config.yaml'
 
 from teruxutil import openai, firestore, langchain_util
@@ -32,34 +32,34 @@ class Response(BaseModel):
 # openaiの使い方
 def main():
 
-    with open('test_data/sample.png', 'rb') as f:
-        image = f.read()
+    # with open('test_data/sample.png', 'rb') as f:
+    #     image = f.read()
 
-    # 天気取得用関数
-    def get_weather(*, location):
-        return {
-            'location': location,
-            'weather': '晴れ'
-        }
+    # # 天気取得用関数
+    # def get_weather(*, location):
+    #     return {
+    #         'location': location,
+    #         'weather': '晴れ'
+        # }
 
     # 天気取得用関数の引数を定義するクラス
-    class GetWeatherArgument(BaseModel):
-        location: str = Field(..., description='場所')
+    # class GetWeatherArgument(BaseModel):
+    #     location: str = Field(..., description='場所')
 
-    # AIへ伝える関数情報
-    func_def = openai.FunctionDefinition(
-        model=GetWeatherArgument,
-        description='指定された場所の天気を取得します。',
-        function=get_weather
-    )
+    # # AIへ伝える関数情報
+    # func_def = openai.FunctionDefinition(
+    #     model=GetWeatherArgument,
+    #     description='指定された場所の天気を取得します。',
+    #     function=get_weather
+    # )
 
-    client_class = openai.AzureOpenAI
-    # client_class = openai.OpenAI
+    # client_class = openai.AzureOpenAI
+    client_class = openai.OpenAI
 
 
     # 一番シンプル
     client = client_class()
-    # result = client.chat_completion('こんにちは')
+    result = client.chat_completion('こんにちは')
 
     # カスタムレスポンスクラスを使う
     # client = client_class()
@@ -72,7 +72,7 @@ def main():
     # カスタム関数を使う
     # client = client_class()
     # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response, images=[('image/png', image)])
-    result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
+    # result = client.chat_completion('東京の天気は？そして北海道の天気は？', functions=[func_def], response_class=Response)
 
     print(result)
 
@@ -167,4 +167,4 @@ def main6():
 
 
 if __name__ == '__main__':
-    main()
+    main3()

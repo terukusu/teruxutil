@@ -3,8 +3,8 @@
 
 config:
   #### teruxutil.openai モジュール の設定 #####
-  api_key:
-  azure_endpoint: # 本家 OpenAIでは不要
+  openai_api_key:
+  azure_endpoint: # Azure用。本家 OpenAIでは不要
   openai_model_name: gpt-4
   openai_embedding_model_name: text-embedding-3-small
   openai_temperature: 0.6
@@ -12,6 +12,9 @@ config:
   openai_api_version: 2024-02-15-preview # Azure用
   openai_max_retries: 10
   openai_history_enabled: false
+
+  #### GCP の設定 ####
+  google_cloud_project_id: # GCPのプロジェクトID e.g. test-00000
 
   #### teruxutil.langchain_util モジュール の設定 #####
   # chat や embedding の設定
@@ -42,6 +45,6 @@ config:
   cloud_sql_database_password:
   cloud_sql_database_name: # e.g. sample_db
 
-  #### teruxutil.bigquery モジュール(まだ無いけど :-p) の設定 #####
+  #### teruxutil.bigquery モジュールの設定 #####
   # langchain_util モジュール の bigquery_vector_search を用いた vector storeにも使用されます
   bq_region: us-central1
