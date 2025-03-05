@@ -12,6 +12,7 @@ config:
   openai_api_version: 2024-02-15-preview # Azure用
   openai_max_retries: 10
   openai_history_enabled: false
+  openai_history_storage: memory # firestore or cloudsql
 
   #### GCP の設定 ####
   google_cloud_project_id: # GCPのプロジェクトID e.g. test-00000

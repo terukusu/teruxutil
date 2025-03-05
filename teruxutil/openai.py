@@ -17,6 +17,15 @@ from .chat import MemoryMessageHistoryRepository, FirestoreMessageHistoryReposit
 _config = Config()
 _DEFAULT_MAX_RETRY_FOR_FORMAT_AI_MESSAGE = 10
 
+def get_openai_message_history_repository():
+    storege = _config['openai_history_storage']
+    if storege == 'firestore':
+        return FirestoreMessageHistoryRepository()
+    elif storege == 'memory':
+        return MemoryMessageHistoryRepository()
+    else:
+        raise ValueError(f"Invalid storage type: {storege}")
+
 
 class FunctionDefinition(BaseModel):
     """
@@ -256,8 +265,7 @@ class BaseOpenAI(ABC):
         self.system_message = system_message
 
         if self.history_enabled:
-            history_repository = FirestoreMessageHistoryRepository()
-            # history_repository = MemoryMessageHistoryRepository()
+            history_repository = get_openai_message_history_repository()
             self.history = MessageHistory(session_id=self.chat_id, repository=history_repository)
 
     def simple_chat_completion(self, prompt: str, *,
