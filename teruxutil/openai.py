@@ -236,7 +236,7 @@ class BaseOpenAI(ABC):
         """
         BaseOpenAIクラスのインスタンスを初期化します。
 
-        :param api_key: OpenAI APIキー。
+        :param openai_api_key: OpenAI APIキー。
         :param model_name: 使用するモデルの名前。
         :param max_tokens: 応答に含める最大トークン数。
         :param temperature: 応答の多様性を制御するための温度パラメータ。
